@@ -1,322 +1,70 @@
-import type { AccountAddress, Aptos, MoveStructId } from "@aptos-labs/ts-sdk"
-import { AptosPriceServiceConnection } from "@pythnetwork/pyth-aptos-js"
-import { priceFeed } from "./constants/price-feed"
-import type { BaseSigner } from "./signers"
-import {
-	borrowToken,
-	burnNFT,
-	burnToken,
-	claimReward,
-	createToken,
-	getBalance,
-	getPoolDetails,
-	getTokenDetails,
-	getTokenPrice,
-	getTransaction,
-	getUserAllPositions,
-	getUserPosition,
-	lendToken,
-	mintToken,
-	repayToken,
-	stakeTokens,
-	transferNFT,
-	transferTokens,
-	unstakeTokens,
-	withdrawToken,
-} from "./tools"
-import {
-	borrowAriesToken,
-	createAriesProfile,
-	lendAriesToken,
-	repayAriesToken,
-	withdrawAriesToken,
-} from "./tools/aries"
-import {
-	borrowTokenWithEchelon,
-	lendTokenWithEchelon,
-	repayTokenWithEchelon,
-	withdrawTokenWithEchelon,
-} from "./tools/echelon"
-import { stakeTokenWithEcho, unstakeTokenWithEcho } from "./tools/echo"
-import { addLiquidity, createPool, removeLiquidity, swap } from "./tools/liquidswap"
-import {
-	closePositionWithMerkleTrade,
-	getPositionsWithMerkleTrade,
-	placeLimitOrderWithMerkleTrade,
-	placeMarketOrderWithMerkleTrade,
-} from "./tools/merkletrade"
-import { createImage } from "./tools/openai"
-import { swapWithPanora } from "./tools/panora"
-import {
-	addLiquidityWithThala,
-	createPoolWithThala,
-	mintMODWithThala,
-	redeemMODWithThala,
-	removeLiquidityWithThala,
-	stakeTokenWithThala,
-	unstakeAPTWithThala,
-} from "./tools/thala"
-import { getTokenByTokenName } from "./utils/get-pool-address-by-token-name"
+import { Connection, PublicKey, Keypair, Transaction, SystemProgram } from "@solana/web3.js";
+import { SolanaAgentKit } from "solana-agent-kit";
 import { coinGeckoTool } from "./tools/coingecko";
-export class AgentRuntime {
-	public account: BaseSigner
-	public aptos: Aptos
-	public config: any
 
-	constructor(account: BaseSigner, aptos: Aptos, config?: any) {
-		this.account = account
-		this.aptos = aptos
-		this.config = config ? config : {}
-	}
+// SolanaAgentRuntime class to replace AgentRuntime
+export class SolanaAgentRuntime {
+    public keypair: Keypair;
+    public connection: Connection;
+    public solanaAgent: SolanaAgentKit;
+    public config: any;
 
-	async getPythData() {
-		const connection = new AptosPriceServiceConnection("https://hermes.pyth.network")
+    constructor(secretKey: Uint8Array, rpcUrl: string, config?: any) {
+        this.keypair = Keypair.fromSecretKey(secretKey);
+        this.connection = new Connection(rpcUrl, "confirmed");
+        // Convert secretKey Uint8Array to base58 string for SolanaAgentKit
+        const bs58 = require("bs58");
+        const secretKeyString = bs58.encode(secretKey);
+        this.solanaAgent = new SolanaAgentKit(secretKeyString, rpcUrl, this.config?.openai_api_key ?? null);
+        this.config = config ? config : {};
+    }
 
-		return await connection.getPriceFeedsUpdateData(priceFeed)
-	}
+    async getBalance(pubkey?: string) {
+        const address = pubkey ? new PublicKey(pubkey) : this.keypair.publicKey;
+        return await this.connection.getBalance(address);
+    }
 
-	getBalance(mint?: string | MoveStructId) {
-		return getBalance(this, mint)
-	}
+    async transferSOL(to: string, lamports: number) {
+        const transaction = new Transaction().add(
+            SystemProgram.transfer({
+                fromPubkey: this.keypair.publicKey,
+                toPubkey: new PublicKey(to),
+                lamports,
+            })
+        );
+        const signature = await this.connection.sendTransaction(transaction, [this.keypair]);
+        return signature;
+    }
 
-	getTokenDetails(token: string) {
-		return getTokenDetails(token)
-	}
+    async getTokenPrice(tokenSymbol: string) {
+        return coinGeckoTool.func({ tokenName: tokenSymbol });
+    }
 
-	getTokenByTokenName(name: string) {
-		return getTokenByTokenName(name)
-	}
+    // Add more Solana-specific methods as needed, e.g., SPL token transfers, NFT minting, etc.
 
-	getTokenPrice(query: string) {
-		return getTokenPrice(query)
-	}
+    // Example: Get SPL token balance
+    async getSPLTokenBalance(tokenMint: string, owner?: string) {
+        const ownerPubkey = owner ? new PublicKey(owner) : this.keypair.publicKey;
+        const accounts = await this.connection.getParsedTokenAccountsByOwner(ownerPubkey, {
+            mint: new PublicKey(tokenMint),
+        });
+        if (accounts.value.length > 0) {
+            return accounts.value[0].account.data.parsed.info.tokenAmount.uiAmount;
+        }
+        return 0;
+    }
 
-	transferTokens(to: AccountAddress, amount: number, mint: string) {
-		return transferTokens(this, to, amount, mint)
-	}
-
-	getTransaction(hash: string) {
-		return getTransaction(this, hash)
-	}
-
-	burnToken(amount: number, mint: string) {
-		return burnToken(this, amount, mint)
-	}
-
-	createToken(name: string, symbol: string, iconURI: string, projectURI: string) {
-		return createToken(this, name, symbol, iconURI, projectURI)
-	}
-
-	mintToken(to: AccountAddress, mint: string, amount: number) {
-		return mintToken(this, to, mint, amount)
-	}
-
-	stakeTokensWithAmnis(to: AccountAddress, amount: number) {
-		return stakeTokens(this, to, amount)
-	}
-
-	withdrawStakeFromAmnis(to: AccountAddress, amount: number) {
-		return unstakeTokens(this, to, amount)
-	}
-
-	transferNFT(to: AccountAddress, mint: AccountAddress) {
-		return transferNFT(this, to, mint)
-	}
-
-	burnNFT(mint: AccountAddress) {
-		return burnNFT(this, mint)
-	}
-
-	lendToken(amount: number, mint: MoveStructId, positionId: string, newPosition: boolean, fungibleAsset: boolean) {
-		return lendToken(this, amount, mint, positionId, newPosition, fungibleAsset)
-	}
-
-	borrowToken(amount: number, mint: MoveStructId, positionId: string, fungibleAsset: boolean) {
-		return borrowToken(this, amount, mint, positionId, fungibleAsset)
-	}
-
-	withdrawToken(amount: number, mint: MoveStructId, positionId: string, fungibleAsset: boolean) {
-		return withdrawToken(this, amount, mint, positionId, fungibleAsset)
-	}
-
-	repayToken(amount: number, mint: MoveStructId, positionId: string, fungibleAsset: boolean) {
-		return repayToken(this, amount, mint, positionId, fungibleAsset)
-	}
-
-	getUserPosition(userAddress: AccountAddress, positionId: string) {
-		return getUserPosition(this, userAddress, positionId)
-	}
-
-	getUserAllPositions(userAddress: AccountAddress) {
-		return getUserAllPositions(this, userAddress)
-	}
-	getPoolDetails(mint: string) {
-		return getPoolDetails(this, mint)
-	}
-
-	addLiquidity(mintX: MoveStructId, mintY: MoveStructId, mintXAmount: number, mintYAmount: number) {
-		return addLiquidity(this, mintX, mintY, mintXAmount, mintYAmount)
-	}
-
-	removeLiquidity(mintX: MoveStructId, mintY: MoveStructId, lpAmount: number, minMintX = 0, minMintY = 0) {
-		return removeLiquidity(this, mintX, mintY, lpAmount, minMintX, minMintY)
-	}
-
-	swap(mintX: MoveStructId, mintY: MoveStructId, swapAmount: number, minCoinOut?: number) {
-		return swap(this, mintX, mintY, swapAmount, minCoinOut)
-	}
-
-	createPool(mintX: MoveStructId, mintY: MoveStructId) {
-		return createPool(this, mintX, mintY)
-	}
-
-	claimReward(rewardCoinType: MoveStructId | string) {
-		return claimReward(this, rewardCoinType)
-	}
-
-	// Aries
-
-	createAriesProfile() {
-		return createAriesProfile(this)
-	}
-
-	lendAriesToken(mintType: MoveStructId, amount: number) {
-		return lendAriesToken(this, mintType, amount)
-	}
-
-	borrowAriesToken(mintType: MoveStructId, amount: number) {
-		return borrowAriesToken(this, mintType, amount)
-	}
-
-	withdrawAriesToken(mintType: MoveStructId, amount: number) {
-		return withdrawAriesToken(this, mintType, amount)
-	}
-
-	repayAriesToken(mintType: MoveStructId, amount: number) {
-		return repayAriesToken(this, mintType, amount)
-	}
-
-	// Thala
-
-	stakeTokensWithThala(amount: number) {
-		return stakeTokenWithThala(this, amount)
-	}
-
-	unstakeTokensWithThala(amount: number) {
-		return unstakeAPTWithThala(this, amount)
-	}
-
-	mintMODWithThala(mintType: MoveStructId, amount: number) {
-		return mintMODWithThala(this, mintType, amount)
-	}
-
-	redeemMODWithThala(mintType: MoveStructId, amount: number) {
-		return redeemMODWithThala(this, mintType, amount)
-	}
-
-	addLiquidityWithThala(mintX: MoveStructId, mintY: MoveStructId, mintXAmount: number, mintYAmount: number) {
-		return addLiquidityWithThala(this, mintX, mintY, mintXAmount, mintYAmount)
-	}
-
-	removeLiquidityWithThala(mintX: MoveStructId, mintY: MoveStructId, lpAmount: number) {
-		return removeLiquidityWithThala(this, mintX, mintY, lpAmount)
-	}
-
-	createPoolWithThala(
-		mintX: MoveStructId | string,
-		mintY: MoveStructId | string,
-		amountX: number,
-		amountY: number,
-		feeTier: number,
-		amplificationFactor: number
-	) {
-		return createPoolWithThala(this, mintX, mintY, amountX, amountY, feeTier, amplificationFactor)
-	}
-
-	// panora
-
-	swapWithPanora(fromToken: string, toToken: string, swapAmount: number, toWalletAddress?: string) {
-		return swapWithPanora(this, fromToken, toToken, swapAmount, toWalletAddress)
-	}
-
-	// openai
-
-	createImageWithOpenAI(prompt: string, size: "256x256" | "512x512" | "1024x1024", n: number) {
-		return createImage(this, prompt, size, n)
-	}
-
-	// Echo
-
-	stakeTokenWithEcho(amount: number) {
-		return stakeTokenWithEcho(this, amount)
-	}
-
-	unstakeTokenWithEcho(amount: number) {
-		return unstakeTokenWithEcho(this, amount)
-	}
-
-	// Echelon
-
-	lendTokenWithEchelon(mintType: MoveStructId, amount: number, poolAddress: string, fungibleAsset: boolean) {
-		return lendTokenWithEchelon(this, mintType, amount, poolAddress, fungibleAsset)
-	}
-
-	withdrawTokenWithEchelon(mintType: MoveStructId, amount: number, poolAddress: string, fungibleAsset: boolean) {
-		return withdrawTokenWithEchelon(this, mintType, amount, poolAddress, fungibleAsset)
-	}
-
-	repayTokenWithEchelon(mintType: MoveStructId, amount: number, poolAddress: string, fungibleAsset: boolean) {
-		return repayTokenWithEchelon(this, mintType, amount, poolAddress, fungibleAsset)
-	}
-
-	borrowTokenWithEchelon(mintType: MoveStructId, amount: number, poolAddress: string, fungibleAsset: boolean) {
-		return borrowTokenWithEchelon(this, mintType, amount, poolAddress, fungibleAsset)
-	}
-
-	// MerkleTrade
-
-	placeMarketOrderWithMerkleTrade(pair: string, isLong: boolean, sizeDelta: number, collateralDelta: number) {
-		return placeMarketOrderWithMerkleTrade(this, pair, isLong, sizeDelta, collateralDelta)
-	}
-
-	placeLimitOrderWithMerkleTrade(
-		pair: string,
-		isLong: boolean,
-		sizeDelta: number,
-		collateralDelta: number,
-		price: number
-	) {
-		return placeLimitOrderWithMerkleTrade(this, pair, isLong, sizeDelta, collateralDelta, price)
-	}
-
-	closePositionWithMerkleTrade(pair: string, isLong: boolean) {
-		return closePositionWithMerkleTrade(this, pair, isLong)
-	}
-
-	getPositionsWithMerkleTrade() {
-		return getPositionsWithMerkleTrade(this)
-	}
-
-	// Add this method to your AgentRuntime class
-	async getTokenContractAddress(tokenName: string) {
-		// The coinGeckoTool.func returns a Promise<string> with a JSON string
-		const resultJson = await coinGeckoTool.func({ tokenName });
-		// Parse the JSON string to get the actual data
-		const result = JSON.parse(resultJson);
-		
-		if (result.success) {
-		// If it's a single token, return the address
-		if (result.address) {
-			return result.address;
-		} 
-		// If it's multiple tokens, return the first one's address
-		else if (result.tokens && result.tokens.length > 0) {
-			return result.tokens[0].address;
-		}
-		}
-		
-		// Return null or throw an error if no token found
-		return null;
-	}
-
+    // Example: Get token contract address from CoinGecko
+    async getTokenContractAddress(tokenName: string) {
+        const resultJson = await coinGeckoTool.func({ tokenName });
+        const result = JSON.parse(resultJson);
+        if (result.success) {
+            if (result.address) {
+                return result.address;
+            } else if (result.tokens && result.tokens.length > 0) {
+                return result.tokens[0].address;
+            }
+        }
+        return null;
+    }
 }

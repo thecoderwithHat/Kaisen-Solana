@@ -4,6 +4,23 @@ import React, { useState, useCallback, useEffect, Suspense } from "react";
 import { ChatWindow } from "@/components/ChatWindow";
 import { useSearchParams, useRouter } from "next/navigation";
 
+// Extend the Window interface to include 'solana'
+declare global {
+  interface Window {
+    solana?: {
+      isPhantom?: boolean;
+      connect: (options?: { onlyIfTrusted?: boolean } ) => Promise<{ publicKey?: { toString(): string } }>;
+      disconnect: () => Promise<void>;
+    };
+    petra?: {
+      connect: () => Promise<{ address: string; publicKey: string }>;
+      disconnect: () => Promise<void>;
+      isConnected: () => Promise<boolean>;
+      account: () => Promise<{ address: string; publicKey: string } | null>;
+    };
+  }
+}
+
 const ChatPageContent = () => {
   const userName: string = "John";
   const [walletAddress, setWalletAddress] = useState<string>("");
@@ -47,6 +64,16 @@ const ChatPageContent = () => {
               localStorage.setItem("walletAddress", account.address);
               return;
             }
+          }
+        }
+
+        // Finally check if wallet is still connected
+        if (typeof window !== "undefined" && window.solana && window.solana.isPhantom) {
+          const resp = await window.solana.connect({ onlyIfTrusted: true });
+          if (resp && resp.publicKey) {
+            setWalletAddress(resp.publicKey.toString());
+            localStorage.setItem("walletAddress", resp.publicKey.toString());
+            return;
           }
         }
 
@@ -134,6 +161,21 @@ const ChatPageContent = () => {
       </div>
     </section>
   );
+
+  async function sendMessageToApi(message: string) {
+    const privyToken = localStorage.getItem("privyToken");
+    const response = await fetch("/api/hello", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${privyToken}`,
+      },
+      body: JSON.stringify({ message }),
+    });
+
+    const data = await response.json();
+    return data;
+  }
 
   return (
     <section className="flex h-screen bg-[url('/kaisen-background.svg')] bg-cover bg-no-repeat bg-center">

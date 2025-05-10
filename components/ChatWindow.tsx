@@ -11,6 +11,19 @@ import type { FormEvent } from "react";
 import { ChatMessageBubble } from "@/components/ChatMessageBubble";
 import { IntermediateStep } from "@/components/IntermediateStep";
 
+declare global {
+  interface Window {
+    phantom?: {
+      solana?: {
+        isConnected: boolean;
+        connect(): Promise<{ publicKey: { toString(): string } }>;
+        disconnect(): Promise<void>;
+        publicKey?: { toString(): string };
+      };
+    };
+  }
+}
+
 interface ChatWindowProps {
   endpoint: string;
   emptyStateComponent: ReactElement;
@@ -41,18 +54,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [walletAddress, setWalletAddress] = useState<string>("");
   const [isInstalled, setIsInstalled] = useState(false);
 
-  // Check if Petra Wallet is installed and fetch wallet address
+  // Check if Phantom Wallet is installed and fetch wallet address
   useEffect(() => {
     const checkWallet = async () => {
-      if (typeof window !== "undefined" && window.petra) {
+      // Check if Phantom is available in window
+      const provider = window.phantom?.solana;
+      
+      if (provider) {
         setIsInstalled(true);
 
         try {
-          const isConnected = await window.petra?.isConnected();
-          if (isConnected) {
-            const account = await window.petra?.account();
-            if (account) {
-              setWalletAddress(account.address);
+          // Check if already connected
+          if (provider.isConnected) {
+            const publicKey = provider.publicKey;
+            if (publicKey) {
+              setWalletAddress(publicKey.toString());
             }
           }
         } catch (error) {
@@ -66,17 +82,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const handleConnect = async () => {
     if (!isInstalled) {
-      window.open("https://petra.app/", "_blank");
+      window.open("https://phantom.app/", "_blank");
       return;
     }
 
     setIsConnecting(true);
 
     try {
-      const response = await window.petra?.connect();
-      if (response) {
-        setWalletAddress(response.address);
-        console.log("Connected to wallet:", response.address);
+      const provider = window.phantom?.solana;
+      
+      if (provider) {
+        // Connect to wallet
+        const { publicKey } = await provider.connect();
+        
+        if (publicKey) {
+          setWalletAddress(publicKey.toString());
+          console.log("Connected to wallet:", publicKey.toString());
+        }
       }
     } catch (error) {
       console.error("Connection error:", error);
@@ -86,10 +108,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   const handleDisconnect = async () => {
-    if (!isInstalled || !window.petra) return;
+    const provider = window.phantom?.solana;
+    if (!isInstalled || !provider) return;
 
     try {
-      await window.petra.disconnect();
+      await provider.disconnect();
       setWalletAddress("");
     } catch (error) {
       console.error("Disconnection error:", error);
@@ -102,8 +125,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     : walletAddress
     ? `Connected: ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
     : !isInstalled
-    ? "Install Petra Wallet"
+    ? "Install Phantom Wallet"
     : "Connect your wallet";
+
+  // Handle click on wallet button
+  const handleWalletButtonClick = () => {
+    if (walletAddress) {
+      handleDisconnect();
+    } else {
+      handleConnect();
+    }
+  };
 
   // Shadow design states
   const [isAtTop, setIsAtTop] = useState(true);
@@ -269,10 +301,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <span className="flex justify-end self-end">
         <div className="flex items-center gap-4">
           <div
-            className="rounded-[10.65px] py-3 px-5"
+            className="rounded-[10.65px] py-3 px-5 cursor-pointer"
             style={{
               background: "linear-gradient(135deg, #8F59E2, #7321EB, #7E45D6)",
             }}
+            onClick={handleWalletButtonClick}
           >
             {walletDisplayText}
           </div>

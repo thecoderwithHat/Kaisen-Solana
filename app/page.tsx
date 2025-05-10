@@ -8,100 +8,102 @@ import { PropsWithChildren, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 
-// Connect Wallet Button Component with direct Petra integration
+// Connect Wallet Button Component with Phantom integration
 const ConnectWalletButton = () => {
   const router = useRouter();
-    const [isConnecting, setIsConnecting] = useState(false);
-    const [walletAddress, setWalletAddress] = useState("");
-    const [isInstalled, setIsInstalled] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [walletAddress, setWalletAddress] = useState("");
+  const [isInstalled, setIsInstalled] = useState(false);
 
-    // Check if Petra is installed when component mounts
-    useEffect(() => {
-        const checkWallet = async () => {
-            if (typeof window !== 'undefined' && window.petra) {
-                setIsInstalled(true);
+  // Check if Phantom is installed when component mounts
+  useEffect(() => {
+    const checkWallet = async () => {
+      if (typeof window !== 'undefined' && window.solana && window.solana.isPhantom) {
+        setIsInstalled(true);
 
-                // Check if already connected
-                try {
-                    const isConnected = await window.petra?.isConnected();
-                    if (isConnected) {
-                        const account = await window.petra?.account();
-                        if (account) {
-                            setWalletAddress(account.address);
-                        }
-                    }
-                } catch (error) {
-                    console.error("Error checking wallet connection:", error);
-                }
-            }
-        };
-
-        checkWallet();
-    }, []);
-
-    const handleConnect = async () => {
-        if (!isInstalled) {
-            window.open('https://petra.app/', '_blank');
-            return;
-        }
-
-        setIsConnecting(true);
-
+        // Check if already connected
         try {
-            // Use optional chaining to safely access petra methods
-            const response = await window.petra?.connect();
-            if (response) {
-                setWalletAddress(response.address);
-                console.log("Connected to wallet:", response);
-                try {
-                  console.log("Attempting to route to /chat...");
-                  await router.push("/chat");
-                  console.log("Route pushed successfully");
-              } catch (routingError) {
-                  console.error("Routing error:", routingError);
-              }
-            }
+          // Phantom does not have isConnected, so try a silent connect
+          const resp = await window.solana.connect({ onlyIfTrusted: true });
+          if (resp && resp.publicKey) {
+            setWalletAddress(resp.publicKey.toString());
+          }
         } catch (error) {
-            console.error("Connection error:", error);
-        } finally {
-            setIsConnecting(false);
+          // Ignore if not connected
         }
+      }
     };
 
-    const handleDisconnect = async () => {
-        if (!isInstalled || !window.petra) return;
+    checkWallet();
+  }, []);
 
-        try {
-            await window.petra.disconnect();
-            setWalletAddress("");
-        } catch (error) {
-            console.error("Disconnection error:", error);
+  const handleConnect = async () => {
+    if (!isInstalled) {
+      window.open('https://phantom.app/', '_blank');
+      return;
+    }
+
+    setIsConnecting(true);
+
+    try {
+      if (window.solana) {
+        const resp = await window.solana.connect();
+        if (resp && resp.publicKey) {
+          setWalletAddress(resp.publicKey.toString());
+          console.log("Connected to wallet:", resp.publicKey.toString());
+
+          // --- Add: Get Privy token after wallet connect ---
+          // Replace this with your actual Privy login/auth flow
+          const privyToken = await getPrivyToken(); // <-- implement this!
+          if (privyToken) {
+            localStorage.setItem("privyToken", privyToken);
+          }
+
+          try {
+            await router.push("/chat");
+          } catch (routingError) {
+            console.error("Routing error:", routingError);
+          }
         }
-    };
+      }
+    } catch (error) {
+      console.error("Connection error:", error);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
 
-    // Button text based on state
-    
-    return (
-        <div className="flex flex-col items-center gap-2">
-            <button
-                onClick={walletAddress ? handleDisconnect : handleConnect}
-                className="mt-10 px-12 py-3 text-2xl font-medium rounded-lg bg-gradient-to-r from-[#7B61FF] to-[#BA4EFF] hover:opacity-90 transition"
-                disabled={isConnecting}
-                
-            >
+  const handleDisconnect = async () => {
+    if (!isInstalled || !window.solana) return;
+
+    try {
+      await window.solana.disconnect();
+      setWalletAddress("");
+    } catch (error) {
+      console.error("Disconnection error:", error);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <button
+        onClick={walletAddress ? handleDisconnect : handleConnect}
+        className="mt-10 px-12 py-3 text-2xl font-medium rounded-lg bg-gradient-to-r from-[#7B61FF] to-[#BA4EFF] hover:opacity-90 transition"
+        disabled={isConnecting}
+      >
         {isConnecting
-            ? "Connecting..."
-            : walletAddress
-            ? "Disconnect Wallet"
-            : "Connect to Wallet"}
-            </button>
-            {walletAddress && (
-                <div className="text-sm text-gray-300 mt-2">
-                    Click to disconnect
-                </div>
-            )}
+          ? "Connecting..."
+          : walletAddress
+          ? "Disconnect Wallet"
+          : "Connect to Wallet"}
+      </button>
+      {walletAddress && (
+        <div className="text-sm text-gray-300 mt-2">
+          Click to disconnect
         </div>
-    );
+      )}
+    </div>
+  );
 };
 
 // Navbar
@@ -137,17 +139,23 @@ const Navbar = () => {
     );
 };
 
-// Add TypeScript declaration for window.petra
+// Add TypeScript declaration for window.solana
 declare global {
-    interface Window {
-        petra?: {
-            connect: () => Promise<{ address: string, publicKey: string }>;
-            disconnect: () => Promise<void>;
-            isConnected: () => Promise<boolean>;
-            account: () => Promise<{ address: string, publicKey: string } | null>;
-            // Add other methods as needed
-        };
-    }
+  interface Window {
+    solana?: {
+      isPhantom?: boolean;
+      connect: (options?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey?: { toString(): string } }>;
+      disconnect: () => Promise<void>;
+    };
+  }
+}
+
+// Helper: Placeholder for Privy login/auth
+async function getPrivyToken(): Promise<string | null> {
+  // TODO: Implement your Privy login/auth and return the token
+  // For example, use Privy SDK or get from your backend
+  // return await privy.login();
+  return null;
 }
 
 export default function Home() {
