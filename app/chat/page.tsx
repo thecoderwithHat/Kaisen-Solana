@@ -134,18 +134,18 @@ const ChatPageContent = () => {
             background: "linear-gradient(135deg, #2B2B2B, #151515, #202020)",
           }}
         >
-          What's the current price of $BTC and $APT?
+          What's the current price of $BTC and $SOL?
         </button>
         <button
           onClick={() =>
-            handleQuestionClick("Show me the top 5 gainers on Aptos today")
+            handleQuestionClick("Show me the top 5 gainers on Solana today")
           }
           className="p-3 rounded-lg border border-[#2A2F3C] text-[#E8EAED] hover:bg-[#2A2F3C] transition-colors max-[600px]:text-xs"
           style={{
             background: "linear-gradient(135deg, #2B2B2B, #151515, #202020)",
           }}
         >
-          Show me the top 5 gainers on Aptos today
+          Show me the top 5 gainers on Solana today
         </button>
         <button
           onClick={() =>

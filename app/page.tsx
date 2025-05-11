@@ -193,7 +193,7 @@ export default function Home() {
 
                 <p className="mt-6 text-[32px] max-[1024px]:text-2xl max-[768px]:text-base text-[#D4D4D4]">
                     Cut the noise. Use AI to lend, borrow, and trade — just by chatting.
-                    Built on Aptos. Backed by real-time data.
+                    Built on Solana. Backed by real-time data.
                 </p>
 
                 <div className="flex justify-center items-center">
